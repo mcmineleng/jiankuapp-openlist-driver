@@ -1,0 +1,64 @@
+name: 测试工具编译
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 配置 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          check-latest: true
+
+      - name: 安装 UPX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx
+
+      - name: 安装 Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+          add-to-path: true
+
+      - name: 执行编译
+        working-directory: utils
+        env:
+          CGO_ENABLED: 1
+        run: |
+          chmod +x ./build.sh
+          ./build.sh all
+
+      - name: 按操作系统/架构打包
+        run: |
+          cd utils/build
+
+          for dir in */*; do
+            os=$(basename "$(dirname "$dir")")
+            arch=$(basename "$dir")
+            zip_name="utils-${os}-${arch}.zip"
+
+            echo "正在打包 $dir → $zip_name"
+            (cd "$dir" && zip -r "../../../$zip_name" .)
+          done
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: 工具二进制文件
+          path: "utils-*.zip"

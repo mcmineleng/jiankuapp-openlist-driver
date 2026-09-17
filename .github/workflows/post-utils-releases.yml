@@ -1,0 +1,91 @@
+name: 发布工具发行版
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 配置 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          check-latest: true
+
+      - name: 安装 UPX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx
+
+      - name: 安装 Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+          add-to-path: true
+
+      - name: 读取版本号
+        id: version
+        run: |
+          VERSION=$(cat utils/version | tr -d '[:space:]')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: 执行编译
+        working-directory: utils
+        env:
+          CGO_ENABLED: 1
+        run: |
+          chmod +x ./build.sh
+          ./build.sh all
+
+      - name: 按操作系统/架构打包
+        run: |
+          cd utils/build
+
+          for dir in */*; do
+            os=$(basename "$(dirname "$dir")")
+            arch=$(basename "$dir")
+            zip_name="utils-${os}-${arch}.zip"
+
+            echo "正在打包 $dir → $zip_name"
+            (cd "$dir" && zip -r "../../../$zip_name" .)
+          done
+
+      - name: 创建或更新标签
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "标签已存在，跳过创建"
+          else
+            git tag "${{ steps.version.outputs.tag }}"
+            git push origin "${{ steps.version.outputs.tag }}"
+          fi
+
+      - name: 创建或更新 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          body: |
+            工具 utils ${{ steps.version.outputs.tag }} 自动构建发行版
+          files: |
+            utils-*.zip
+          draft: false
+          prerelease: false
