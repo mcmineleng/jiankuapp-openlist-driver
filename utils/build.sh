@@ -56,7 +56,6 @@ ALL_PLATFORMS=(
   "windows/arm64"
   "freebsd/amd64"
   "android/arm64"
-  "android/amd64"
 )
 
 # ========== 平台选择 ==========
