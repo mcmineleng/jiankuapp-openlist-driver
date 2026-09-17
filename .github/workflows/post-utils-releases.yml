@@ -50,18 +50,29 @@ jobs:
           chmod +x ./build.sh
           ./build.sh all
 
+      - name: 验证构建产物
+        run: |
+          ls -R utils/build
+          test -n "$(ls -A utils/build)" || (echo "❌ build 目录为空，编译未产生产物" && exit 1)
+
       - name: 按操作系统/架构打包
         run: |
           cd utils/build
 
+          shopt -s nullglob
           for dir in */*; do
+            [ -d "$dir" ] || continue
             os=$(basename "$(dirname "$dir")")
             arch=$(basename "$dir")
             zip_name="utils-${os}-${arch}.zip"
 
             echo "正在打包 $dir → $zip_name"
-            (cd "$dir" && zip -r "../../../$zip_name" .)
+            (cd "$dir" && zip -r "$GITHUB_WORKSPACE/$zip_name" .)
           done
+
+      - name: 校验打包结果
+        run: |
+          ls -lh "$GITHUB_WORKSPACE"/utils-*.zip
 
       - name: 创建或更新标签
         run: |
@@ -86,3 +97,4 @@ jobs:
             utils-*.zip
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
